@@ -1,60 +1,63 @@
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
 import { AttendMeBackendClient } from '@/backend/AttendMeBackendClient'
 
-interface UserInfo {
+type AppUser = {
   id?: number
   userName?: string
   role?: string
 }
 
+const api = new AttendMeBackendClient('https://attendme-backend.runasp.net')
+
 export const useAuthStore = defineStore('auth', () => {
-  const client = new AttendMeBackendClient('https://attendme-backend.runasp.net')
+  const currentUser = ref<AppUser | null>(null)
+  const ready = ref(false)
+  const error = ref('')
 
-  const user = ref<UserInfo | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const isLoggedIn = computed(() => !!currentUser.value)
 
-  async function login(loginName: string, password: string) {
-    loading.value = true
-    error.value = null
+  async function fetchProfile() {
+    const profile = await api.userGet(undefined)
+    currentUser.value = profile as AppUser
+  }
+
+  async function signIn(login: string, password: string) {
+    error.value = ''
 
     try {
-      await client.userLogin(loginName, password)
-
-      await loadUser()
+      await api.userLogin(login, password)
+      await fetchProfile()
       return true
-    } catch (err) {
-      console.error('Błąd logowania:', err)
+    } catch (e) {
+      console.error('Błąd logowania:', e)
+      currentUser.value = null
       error.value = 'Nieprawidłowy login lub hasło'
       return false
-    } finally {
-      loading.value = false
     }
   }
 
-  async function loadUser() {
+  async function restoreSession() {
     try {
-      const userData = await client.userGet(undefined)
-      user.value = userData as UserInfo
+      await fetchProfile()
     } catch {
-      user.value = null
+      currentUser.value = null
+    } finally {
+      ready.value = true
     }
   }
 
-  function logout() {
-    sessionStorage.clear()
-    localStorage.clear()
-    user.value = null
+  function signOut() {
+    currentUser.value = null
   }
 
   return {
-    client,
-    user,
-    loading,
+    currentUser,
+    ready,
     error,
-    login,
-    loadUser,
-    logout,
+    isLoggedIn,
+    signIn,
+    restoreSession,
+    signOut,
   }
 })

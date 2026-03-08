@@ -1,36 +1,83 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-
-import LoginView from '@/views/auth/LoginView.vue'
-import StudentDashboard from '@/views/student/StudentDashboard.vue'
-import StudentSessionDetails from '@/views/student/StudentSessionDetails.vue'
-import StudentDeviceAuth from '@/views/student/StudentDeviceAuth.vue'
-
-const routes = [
-  { path: '/login', component: LoginView },
-  { path: '/student', component: StudentDashboard },
-  { path: '/student/session/:id', component: StudentSessionDetails },
-  { path: '/device-auth', component: StudentDeviceAuth },
-  { path: '/', redirect: '/login' },
-]
-
 const router = createRouter({
-  history: createWebHashHistory(),
-  routes,
+  history: createWebHistory(),
+  routes: [
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/auth/LoginView.vue'),
+    },
+    {
+      path: '/student',
+      name: 'student',
+      component: () => import('@/views/student/StudentDashboard.vue'),
+      meta: { requiresAuth: true, role: 'Student' },
+    },
+    {
+      path: '/teacher',
+      name: 'teacher',
+      component: () => import('@/views/teacher/TeacherDashboard.vue'),
+      meta: { requiresAuth: true, role: 'Teacher' },
+    },
+    {
+      path: '/',
+      redirect: '/login',
+    },
+  ],
 })
+function normalizeRole(role: unknown) {
+  const value = String(role ?? '')
+    .trim()
 
+    .trim()
+    .toLowerCase()
+
+  if (['teacher', 'lecturer', 'wykladowca', 'wykładowca', '1'].includes(value)) {
+    return 'Teacher'
+  }
+
+  if (['student', 'uczen', 'uczeń', '0'].includes(value)) {
+    return 'Student'
+  }
+
+  return null
+}
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
-  if (!auth.user && to.path !== '/login') {
-    await auth.loadUser()
+  if (!auth.ready) {
+    await auth.restoreSession()
   }
 
+  const user = auth.currentUser
+  const role = normalizeRole(auth.currentUser?.role)
 
-  if (!auth.user && to.path !== '/login') {
+  if (to.path === '/login') {
+    if (!user) return true
+    if (role === 'Teacher') return '/teacher'
+    if (role === 'Student') return '/student'
+    return true
+  }
+
+  if (to.meta.requiresAuth && !user) {
     return '/login'
   }
+
+  if (to.path === '/student') {
+    if (role === 'Student') return true
+    if (role === 'Teacher') return '/teacher'
+    return '/login'
+  }
+
+  if (to.path === '/teacher') {
+    if (role === 'Teacher') return true
+    if (role === 'Student') return '/student'
+    return '/login'
+  }
+
+  return true
 })
 
 export default router
