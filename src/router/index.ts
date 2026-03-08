@@ -8,73 +8,74 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: () => import('@/views/auth/LoginView.vue'),
+      meta: { public: true },
     },
     {
       path: '/student',
       name: 'student',
       component: () => import('@/views/student/StudentDashboard.vue'),
-      meta: { requiresAuth: true, role: 'Student' },
+      meta: { role: 'student' },
+    },
+    {
+      path: '/student/session/:id',
+      name: 'student-session',
+      component: () => import('@/views/student/StudentSessionDetails.vue'),
+      meta: { role: 'student' },
+    },
+    {
+      path: '/device-auth',
+      name: 'device-auth',
+      component: () => import('@/views/student/StudentDeviceAuth.vue'),
+      meta: { public: true },
     },
     {
       path: '/teacher',
       name: 'teacher',
       component: () => import('@/views/teacher/TeacherDashboard.vue'),
-      meta: { requiresAuth: true, role: 'Teacher' },
+      meta: { role: 'teacher' },
+    },
+    {
+      path: '/teacher/session/:id',
+      name: 'teacher-session',
+      component: () => import('@/views/teacher/TeacherSessionDetails.vue'),
+      meta: { role: 'teacher' },
     },
     {
       path: '/',
       redirect: '/login',
     },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/login',
+    },
   ],
 })
-function normalizeRole(role: unknown) {
-  const value = String(role ?? '')
-    .trim()
 
-    .trim()
-    .toLowerCase()
-
-  if (['teacher', 'lecturer', 'wykladowca', 'wykładowca', '1'].includes(value)) {
-    return 'Teacher'
-  }
-
-  if (['student', 'uczen', 'uczeń', '0'].includes(value)) {
-    return 'Student'
-  }
-
-  return null
-}
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
-  if (!auth.ready) {
-    await auth.restoreSession()
+  if (!auth.initialized) {
+    await auth.loginFromStorage()
   }
 
-  const user = auth.currentUser
-  const role = normalizeRole(auth.currentUser?.role)
-
-  if (to.path === '/login') {
-    if (!user) return true
-    if (role === 'Teacher') return '/teacher'
-    if (role === 'Student') return '/student'
+  if (to.meta.public) {
+    if (to.path === '/login' && auth.user) {
+      if (auth.user.isTeacher) return '/teacher'
+      if (auth.user.isStudent) return '/student'
+    }
     return true
   }
 
-  if (to.meta.requiresAuth && !user) {
+  if (!auth.user) {
     return '/login'
   }
 
-  if (to.path === '/student') {
-    if (role === 'Student') return true
-    if (role === 'Teacher') return '/teacher'
-    return '/login'
+  if (to.meta.role === 'teacher' && !auth.user.isTeacher) {
+    return auth.user.isStudent ? '/student' : '/login'
   }
 
-  if (to.path === '/teacher') {
-    if (role === 'Teacher') return true
-    if (role === 'Student') return '/student'
-    return '/login'
+  if (to.meta.role === 'student' && !auth.user.isStudent) {
+    return auth.user.isTeacher ? '/teacher' : '/login'
   }
 
   return true
